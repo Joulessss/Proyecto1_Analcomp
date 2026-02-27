@@ -1,4 +1,3 @@
-
 import pandas as pd
 import numpy as np
 import seaborn as sns
@@ -8,21 +7,856 @@ import json
 import unicodedata
 import plotly.graph_objects as go
 import dash
-from dash import dcc, html, Input, Output
+from dash import dcc, html, Input, Output, State
 import scipy.stats as stats
+import warnings
+import urllib3
+from urllib3.exceptions import NotOpenSSLWarning
 
+warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
+warnings.filterwarnings("ignore", category=urllib3.exceptions.NotOpenSSLWarning)
 
-Data = pd.read_csv('../DataAWS.csv')
+#cargar datos ────────────────────────────────────────────────────────────────────────
+Data = pd.read_csv('./DataAWS.csv')
 
 cols_used = ['cole_area_ubicacion', 'cole_caracter','cole_naturaleza','cole_jornada', #barplots apilados y donas y geograficos
-             'cole_mcpio_ubicacion', 'cole_nombre_establecimiento',
-             
+             'cole_mcpio_ubicacion', 'cole_nombre_establecimiento',                          
              'punt_matematicas','punt_c_naturales'] # histograma kde
-Data_used = Data[cols_used]
+
+Data_used = Data[cols_used].copy()
 Data_used['punt_prom_mcn'] = (Data_used['punt_matematicas'] + Data_used['punt_c_naturales'])/2
 
-with open('../data_df_graphs/gadm41_COL_2.json', 'r', encoding='utf-8') as f:
+with open('./data_df_graphs/gadm41_COL_2.json', 'r', encoding='utf-8') as f:
     geojson_data = json.load(f)
     
-with open('../data_df_graphs/gadm41_COL_1.json', 'r', encoding='utf-8') as f:
+with open('./data_df_graphs/gadm41_COL_1.json', 'r', encoding='utf-8') as f:
     geojson_dpto = json.load(f)
+    
+
+#Funciones secundarias Datos ────────────────────────────────────────────────────────────────────────
+def normalizar(name):
+    name = name.lower().strip()
+    name = unicodedata.normalize('NFKD', name)
+    name = ''.join(c for c in name if not unicodedata.combining(c))
+    name = name.replace(' ', '')
+    name = name.replace('cienega', 'cienaga')
+    name = name.replace('guicandelasierra', 'guican')
+    name = name.replace('pisva', 'pisba')
+    name = name.replace('tutasa', 'tutaza')
+    return name    
+
+# creacion vars ────────────────────────────────────────────────────────────────────────
+boyaca_dpto = next(f for f in geojson_dpto['features'] if normalizar(f['properties']['NAME_1']) == 'boyaca')
+            
+todos_municipios = Data_used['cole_mcpio_ubicacion'].dropna().unique().tolist()
+
+mapa_norm_a_real = {}
+for m in todos_municipios:
+    norm = normalizar(m)
+    if norm not in mapa_norm_a_real:
+        mapa_norm_a_real[norm] = m
+    else:
+        existente = mapa_norm_a_real[norm]
+        count_nuevo    = len(Data_used[Data_used['cole_mcpio_ubicacion'] == m])
+        count_existente = len(Data_used[Data_used['cole_mcpio_ubicacion'] == existente])
+        if count_nuevo > count_existente:
+            mapa_norm_a_real[norm] = m
+
+geos_coinc = [feature for feature in geojson_data['features'][212:335] if normalizar(feature['properties']['NAME_2']) in mapa_norm_a_real]
+filt_geojson = {"type": "FeatureCollection", "features": geos_coinc}
+
+for i, feature in enumerate(filt_geojson['features']): feature['id'] = i
+
+plot_df = pd.DataFrame([{"id": i, "name": f['properties']['NAME_2'], "nombre_real": mapa_norm_a_real.get(normalizar(f['properties']['NAME_2']))} for i, f in enumerate(filt_geojson['features'])])
+
+coords_centr = geos_coinc[0]['geometry']['coordinates'][0][0][0]
+latids_bordes, longs_bordes = [], []
+geom = boyaca_dpto['geometry']
+polys = geom['coordinates'] if geom['type'] == 'Polygon' else geom['coordinates']
+for poly in polys:
+    ring = poly[0]
+    longs_bordes.extend([p[0] for p in ring] + [None])
+    latids_bordes.extend([p[1] for p in ring] + [None])
+
+# mapa_norm_a_real = {}
+# for m in sorted(Data_used['cole_mcpio_ubicacion'].dropna().unique()):
+#     norm = normalizar(m)
+#     if norm not in mapa_norm_a_real:
+#         mapa_norm_a_real[norm] = m
+
+# Añadir nombre canónico a plot_df UNA SOLA VEZ
+plot_df['nombre_real'] = plot_df['name'].apply(
+    lambda x: mapa_norm_a_real.get(normalizar(x))
+)
+
+vars_cat = {
+    'Sin filtro': None,
+    'Área de Ubicación': 'cole_area_ubicacion',
+    'Naturaleza': 'cole_naturaleza',
+    'Jornada': 'cole_jornada',
+    'Carácter': 'cole_caracter'
+}
+
+puntajes = {
+    'Matemáticas': 'punt_matematicas',
+    'Ciencias Naturales': 'punt_c_naturales',
+    'Promedio Mates y Cienc. Nat.': 'punt_prom_mcn'
+}
+
+# Funciones secundarias plot ────────────────────────────────────────────────────────────────────────
+def format_hover(r):
+    nombre      = r['cole_mcpio_ubicacion'] if pd.notna(r.get('cole_mcpio_ubicacion')) else r['name']
+    promedio    = f"{r['promedio']:.1f}" if pd.notna(r.get('promedio')) else 'N/D'
+    colegios    = int(r['num_colegios']) if pd.notna(r.get('num_colegios')) else 'N/D'
+    estudiantes = int(r['num_estudiantes']) if pd.notna(r.get('num_estudiantes')) else 'N/D'
+    return (f"<b>{nombre}</b><br>"
+            f"Puntaje promedio: {promedio}<br>"
+            f"N° Colegios: {colegios}<br>"
+            f"N° Estudiantes: {estudiantes}")
+    
+def agrup_municp(df, col_puntaje, col_cat=None, cat_valor=None):
+    df = df.copy()
+    df['cole_mcpio_ubicacion'] = df['cole_mcpio_ubicacion'].map(
+        lambda x: mapa_norm_a_real.get(normalizar(x), x)
+    )
+    if col_cat and cat_valor:
+        df = df[df[col_cat] == cat_valor]
+    agg = df.groupby('cole_mcpio_ubicacion').agg(
+        promedio = (col_puntaje, 'mean'),
+        num_colegios = ('cole_nombre_establecimiento', 'nunique'),
+        num_estudiantes = (col_puntaje, 'count')
+    ).reset_index()
+    agg['mcpio_norm'] = agg['cole_mcpio_ubicacion'].apply(normalizar)
+    return agg    
+
+
+def datos_trazar(punt_col, col_cat=None, cat_valor=None):
+    agg = agrup_municp(Data_used, punt_col, col_cat, cat_valor)
+    
+    munic_df = plot_df.copy()
+    munic_df['name_norm'] = munic_df['name'].apply(normalizar)
+    munic_df = munic_df.merge(agg, left_on='name_norm', right_on='mcpio_norm', how='left')
+
+    def hover(r):
+        nombre = r['nombre_real'] if pd.notna(r.get('nombre_real')) else r['name']
+        promedio = f"{r['promedio']:.1f}" if pd.notna(r.get('promedio')) else 'N/D'
+        colegios = int(r['num_colegios']) if pd.notna(r.get('num_colegios')) else 'N/D'
+        estudiantes = int(r['num_estudiantes']) if pd.notna(r.get('num_estudiantes')) else 'N/D'
+        return (f"<b>{nombre}</b><br>"
+                f"Puntaje promedio: {promedio}<br>"
+                f"N° Colegios: {colegios}<br>"
+                f"N° Estudiantes: {estudiantes}")
+
+    munic_df['hover'] = munic_df.apply(hover, axis=1)
+    return munic_df['promedio'].tolist(), munic_df['hover'].tolist(), plot_df['nombre_real'].tolist()
+
+# estilos ────────────────────────────────────────────────────────────────────────
+
+COLORS = {
+    'primary':    '#003876',
+    'secondary':  '#009640',
+    'accent':     '#E8B400',
+    'background': '#F0F4F8',
+    'surface':    '#FFFFFF',
+    'text':       '#1A2B3C',
+    'muted':      '#6B7C93',
+    'border':     '#DDE3EA',
+}
+
+CARD_STYLE = {
+    'backgroundColor': COLORS['surface'],
+    'borderRadius': '12px',
+    'padding': '24px',
+    'boxShadow': '0 2px 12px rgba(0,0,0,0.06)',
+    'border': f'1px solid {COLORS["border"]}',
+    'marginBottom': '20px',
+}
+
+LABEL_STYLE = {
+    'fontSize': '11px',
+    'fontWeight': '700',
+    'letterSpacing': '0.08em',
+    'color': COLORS['muted'],
+    'textTransform': 'uppercase',
+    'marginBottom': '6px',
+    'display': 'block',
+}
+
+DROPDOWN_STYLE = {
+    'fontSize': '13px',
+    'borderRadius': '8px',
+    'border': f'1px solid {COLORS["border"]}',
+}
+
+tab_base = {
+    'padding': '14px 28px',
+    'fontFamily': '"Segoe UI", sans-serif',
+    'fontWeight': '600',
+    'fontSize': '13px',
+    'letterSpacing': '0.04em',
+    'color': COLORS['muted'],
+    'backgroundColor': COLORS['background'],
+    'border': 'none',
+    'borderBottom': f'2px solid {COLORS["border"]}',
+}
+
+tab_selected = {
+    **tab_base,
+    'color': COLORS['primary'],
+    'backgroundColor': COLORS['surface'],
+    'borderBottom': f'3px solid {COLORS["secondary"]}',
+}
+
+# helperslayout ────────────────────────────────────────────────────────────────────────
+def make_kpi(label, value, icon='📊', color=COLORS['primary']):
+    return html.Div([
+        html.Div(icon, style={'fontSize': '28px', 'marginBottom': '8px'}),
+        html.Div(value, style={
+            'fontSize': '26px', 'fontWeight': '800',
+            'color': color, 'lineHeight': '1',
+        }),
+        html.Div(label, style={
+            'fontSize': '11px', 'color': COLORS['muted'],
+            'fontWeight': '600', 'letterSpacing': '0.06em',
+            'textTransform': 'uppercase', 'marginTop': '6px',
+        }),
+    ], style={
+        **CARD_STYLE,
+        'textAlign': 'center',
+        'padding': '20px 16px',
+        'flex': '1',
+        'marginBottom': '0',
+        'borderTop': f'4px solid {color}',
+    })
+
+
+def seccion_pregunta(numero, titulo, descripcion):
+    return html.Div([
+        html.Div([
+            html.Span(f"Pregunta {numero}", style={
+                'backgroundColor': COLORS['secondary'],
+                'color': 'white',
+                'fontSize': '11px',
+                'fontWeight': '700',
+                'letterSpacing': '0.08em',
+                'padding': '4px 12px',
+                'borderRadius': '20px',
+                'textTransform': 'uppercase',
+            }),
+            html.H3(titulo, style={
+                'color': COLORS['primary'],
+                'fontWeight': '800',
+                'fontSize': '20px',
+                'margin': '12px 0 8px',
+            }),
+            html.P(descripcion, style={
+                'color': COLORS['text'],
+                'fontSize': '15px',
+                'lineHeight': '1.7',
+                'margin': '0',
+            }),
+        ], style={
+            **CARD_STYLE,
+            'borderLeft': f'5px solid {COLORS["secondary"]}',
+        })
+    ])
+
+# ────────────────────────────────────────────────────────────────────────
+# contenido tabs ─────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────
+
+# tab pregunta 1 ────────────────────────────────────────────────────────────────────────
+
+def tab1_content():
+    return html.Div([
+        seccion_pregunta(
+            1,
+            "Impacto del Bilingüismo en el Desempeño",
+            "¿Existe evidencia de que los colegios bilingües presentan un desempeño significativamente "
+            "superior en inglés y puntaje global frente a los no bilingües, justificando programas "
+            "en instituciones públicas?"
+        ),
+        # KPIs placeholder
+        html.Div([
+            make_kpi("Colegios Bilingües", "—", "🌐", COLORS['primary']),
+            make_kpi("Diferencia en Inglés", "—", "📈", COLORS['secondary']),
+            make_kpi("Significancia Estadística", "—", "🔬", COLORS['accent']),
+        ], style={'display': 'flex', 'gap': '16px', 'marginBottom': '20px'}),
+
+        # Área de gráficas
+        html.Div([
+            html.Div("📊 Gráficas de comparación bilingüe vs. no bilingüe aparecerán aquí.", style={
+                'textAlign': 'center',
+                'color': COLORS['muted'],
+                'fontSize': '15px',
+                'padding': '60px 0',
+            })
+        ], style=CARD_STYLE),
+    ])
+
+
+# tab pregunta 2 ────────────────────────────────────────────────────────────────────────
+
+def tab2_content():
+    return html.Div([
+        seccion_pregunta(
+            2,
+            "Focalización de Esfuerzos Sociales",
+            "¿En qué segmentos (urbano/rural, público/privado, población privada de la libertad) "
+            "se concentra el menor desempeño en Ciencias Sociales para priorizar la intervención territorial?"
+        ),
+        html.Div([
+            make_kpi("Brecha Urbano-Rural", "—", "🏘️", COLORS['primary']),
+            make_kpi("% Segmento Crítico", "—", "⚠️", '#D63031'),
+            make_kpi("Municipios Focalizados", "—", "📍", COLORS['secondary']),
+        ], style={'display': 'flex', 'gap': '16px', 'marginBottom': '20px'}),
+
+        html.Div([
+            html.Div("📊 Gráficas de segmentación y focalización territorial aparecerán aquí.", style={
+                'textAlign': 'center',
+                'color': COLORS['muted'],
+                'fontSize': '15px',
+                'padding': '60px 0',
+            })
+        ], style=CARD_STYLE),
+    ])
+    
+    
+# tab pregunta 3 ────────────────────────────────────────────────────────────────────────
+# ── Contenido Tab 3: Entornos Científicos ─────────────────────────────────────
+def tab3_content():
+    return html.Div([
+        seccion_pregunta(
+            3,
+            "Vocación Científica y Entornos Académicos",
+            "La Gobernación de Boyacá necesita conocer ¿qué tipos de entornos académicos dentro del departamento de Boyacá "
+            "presentan menor desempeño en Matemáticas y Ciencias Naturales según Saber 11, y dónde tendría mayor impacto una "
+            "campaña de motivación hacia la investigación científica como estrategia para fortalecer competencias en cuestión."
+        ),
+
+        # KPIs dinámicos (se calculan en callback)
+        html.Div(id='tab3-kpis', style={'display': 'flex', 'gap': '16px', 'marginBottom': '20px'}),
+
+        # ── Mapa + Distribución lado a lado ───────────────────────────────────
+        html.Div([
+
+            # ── Card Mapa (izquierdo) ─────────────────────────────────────────
+            html.Div([
+                html.Div("🗺️ Mapa por Municipio", style={
+                    'fontWeight': '700', 'color': COLORS['primary'],
+                    'fontSize': '14px', 'marginBottom': '16px',
+                    'letterSpacing': '0.04em',
+                }),
+
+                html.Div([
+                    html.Div([
+                        html.Span("Variable del colegio", style=LABEL_STYLE),
+                        dcc.Dropdown(
+                            id='dd-cat',
+                            options=[{'label': k, 'value': k} for k in vars_cat.keys()],
+                            value='Sin variable',
+                            clearable=False,
+                            style=DROPDOWN_STYLE,
+                        )
+                    ], style={'flex': '1', 'marginRight': '16px'}),
+
+                    html.Div([
+                        html.Span("Valor de variable", style=LABEL_STYLE),
+                        dcc.Dropdown(
+                            id='dd-val',
+                            options=[{'label': 'Todos', 'value': 'Todos'}],
+                            value='Todos',
+                            clearable=False,
+                            style=DROPDOWN_STYLE,
+                        )
+                    ], style={'flex': '1', 'marginRight': '16px'}),
+
+                    html.Div([
+                        html.Span("Puntaje a visualizar", style=LABEL_STYLE),
+                        dcc.Dropdown(
+                            id='dd-punt',
+                            options=[{'label': k, 'value': k} for k in puntajes.keys()],
+                            value='Promedio Mates y Cienc. Nat.',
+                            clearable=False,
+                            style=DROPDOWN_STYLE,
+                        )
+                    ], style={'flex': '1'}),
+                ], style={
+                    'display': 'flex', 'alignItems': 'flex-end',
+                    'marginBottom': '16px', 'paddingBottom': '16px',
+                    'borderBottom': f'1px solid {COLORS["border"]}',
+                }),
+
+                dcc.Graph(id='mapa', style={'height': '480px'}, config={'displayModeBar': False}),
+
+            ], style={**CARD_STYLE, 'flex': '1.4', 'marginBottom': '0'}),
+
+            # ── Card Distribución (derecho) ───────────────────────────────────
+            html.Div([
+                html.Div("📊 Distribución de Puntajes", style={
+                    'fontWeight': '700', 'color': COLORS['primary'],
+                    'fontSize': '14px', 'marginBottom': '8px',
+                    'letterSpacing': '0.04em',
+                }),
+
+                html.Div([
+                    html.Button('Histograma', id='tab-hist-btn', n_clicks=0, style={
+                        'padding': '7px 18px', 'marginRight': '8px',
+                        'border': f'1px solid {COLORS["primary"]}',
+                        'borderRadius': '20px', 'cursor': 'pointer',
+                        'backgroundColor': COLORS['primary'], 'color': 'white',
+                        'fontSize': '12px', 'fontWeight': '600',
+                    }),
+                    html.Button('Violín', id='tab-violin-btn', n_clicks=0, style={
+                        'padding': '7px 18px',
+                        'border': f'1px solid {COLORS["border"]}',
+                        'borderRadius': '20px', 'cursor': 'pointer',
+                        'backgroundColor': COLORS['surface'], 'color': COLORS['muted'],
+                        'fontSize': '12px', 'fontWeight': '600',
+                    }),
+                ], style={
+                    'marginBottom': '16px',
+                    'paddingBottom': '16px',
+                    'borderBottom': f'1px solid {COLORS["border"]}',
+                }),
+
+                html.Div([
+                    html.Div(id='div-modal-dd-cat', children=[
+                        html.Span("Variable del colegio", style=LABEL_STYLE),
+                        dcc.Dropdown(
+                            id='modal-dd-cat',
+                            options=[
+                                {'label': 'Jornada',           'value': 'cole_jornada'},
+                                {'label': 'Zona de Ubicación', 'value': 'cole_area_ubicacion'},
+                                {'label': 'Naturaleza',        'value': 'cole_naturaleza'},
+                                {'label': 'Carácter',          'value': 'cole_caracter'},
+                            ],
+                            value='cole_jornada',
+                            clearable=False,
+                            style=DROPDOWN_STYLE,
+                        ),
+                    ], style={'flex': '1', 'marginRight': '12px'}),
+
+                    html.Div([
+                        html.Span("Puntaje", style=LABEL_STYLE),
+                        dcc.Dropdown(
+                            id='modal-dd-punt',
+                            options=[{'label': k, 'value': v} for k, v in puntajes.items()],
+                            value='punt_prom_mcn',
+                            clearable=False,
+                            style=DROPDOWN_STYLE,
+                        ),
+                    ], style={'flex': '1'}),
+                ], style={'display': 'flex', 'alignItems': 'flex-end', 'marginBottom': '16px'}),
+
+                # Hint municipio
+                html.Div(
+                    "🖱️ Haz clic en un municipio del mapa para ver su distribución",
+                    id='panel-hint',
+                    style={
+                        'textAlign': 'center',
+                        'color': COLORS['muted'],
+                        'fontSize': '12px',
+                        'padding': '60px 20px',
+                        'border': f'2px dashed {COLORS["border"]}',
+                        'borderRadius': '10px',
+                        'marginTop': '8px',
+                    }
+                ),
+
+                # Gráficas fijas
+                dcc.Store(id='tab-activo', data='hist'),
+                html.Div(id='panel-hist', children=[
+                    dcc.Graph(id='hist-plot', style={'height': '340px'}, config={'displayModeBar': False})
+                ], style={'display': 'none'}),
+                html.Div(id='panel-violin', children=[
+                    dcc.Graph(id='violin-plot', style={'height': '340px'}, config={'displayModeBar': False})
+                ], style={'display': 'none'}),
+
+            ], style={**CARD_STYLE, 'flex': '1', 'marginBottom': '0', 'marginLeft': '20px'}),
+
+        ], style={'display': 'flex', 'alignItems': 'flex-start'}),
+
+        dcc.Store(id='municipio-store'),
+    ])
+                      
+    
+# ── App Layout ───────────────────────────────────────────────────────────────
+app = dash.Dash(
+    __name__,
+    suppress_callback_exceptions=True,
+    external_stylesheets=['https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap']
+)
+
+app.layout = html.Div(
+    style={
+        'backgroundColor': COLORS['background'],
+        'fontFamily': '"Plus Jakarta Sans", "Segoe UI", sans-serif',
+        'minHeight': '100vh',
+    },
+    children=[
+        # ── Header ────────────────────────────────────────────────────────
+        html.Div([
+            html.Div([
+                # Logo / escudo
+                html.Div("🏛️", style={'fontSize': '40px', 'marginRight': '18px'}),
+                html.Div([
+                    html.H1("Gobernación de Boyacá", style={
+                        'margin': '0', 'fontSize': '22px',
+                        'fontWeight': '800', 'color': 'white',
+                        'letterSpacing': '-0.02em',
+                    }),
+                    html.P("Análisis Educativo · Resultados Saber 11", style={
+                        'margin': '2px 0 0', 'fontSize': '13px',
+                        'color': 'rgba(255,255,255,0.7)', 'fontWeight': '500',
+                    }),
+                ]),
+            ], style={'display': 'flex', 'alignItems': 'center'}),
+
+            # Badge año
+            html.Div("2024", style={
+                'backgroundColor': COLORS['secondary'],
+                'color': 'white', 'fontSize': '13px',
+                'fontWeight': '700', 'padding': '6px 16px',
+                'borderRadius': '20px', 'letterSpacing': '0.04em',
+            }),
+        ], style={
+            'background': f'linear-gradient(135deg, {COLORS["primary"]} 0%, #005199 100%)',
+            'padding': '22px 48px',
+            'display': 'flex',
+            'justifyContent': 'space-between',
+            'alignItems': 'center',
+            'boxShadow': '0 4px 20px rgba(0,56,118,0.3)',
+        }),
+
+        # ── Tabs ──────────────────────────────────────────────────────────
+        html.Div([
+            dcc.Tabs(
+                id='tabs-botones',
+                value='tab-1',
+                children=[
+                    dcc.Tab(label='🌐  Bilingüismo',        value='tab-1', style=tab_base, selected_style=tab_selected),
+                    dcc.Tab(label='🤝  Focalización Social', value='tab-2', style=tab_base, selected_style=tab_selected),
+                    dcc.Tab(label='🔬  Entornos Científicos', value='tab-3', style=tab_base, selected_style=tab_selected),
+                ],
+                style={'borderBottom': f'1px solid {COLORS["border"]}'},
+            ),
+            html.Div(id='contenido-tab', style={'padding': '28px 48px'}),
+        ]),
+    ]
+)    
+    
+# ── Callbacks ────────────────────────────────────────────────────────────────────
+@app.callback(Output('contenido-tab', 'children'), Input('tabs-botones', 'value'))
+def render_tab(tab):
+    if tab == 'tab-1':
+        return tab1_content()
+    elif tab == 'tab-2':
+        return tab2_content()
+    else:
+        return tab3_content()
+
+
+# ── Actualizar opciones del dropdown "valor" ──────────────────────────────────
+@app.callback(
+    Output('dd-val', 'options'),
+    Output('dd-val', 'value'),
+    Input('dd-cat', 'value'),
+)
+def update_val_options(cat_key):
+    col = vars_cat.get(cat_key)
+    if not col:
+        return [{'label': 'Todos', 'value': 'Todos'}], 'Todos'
+    vals = Data_used[col].dropna().unique().tolist()
+    opts = [{'label': 'Todos', 'value': 'Todos'}] + [{'label': v, 'value': v} for v in sorted(vals)]
+    return opts, 'Todos'
+
+
+# ── KPIs Tab 3 ───────────────────────────────────────────────────────────────
+@app.callback(
+    Output('tab3-kpis', 'children'),
+    Input('dd-punt', 'value'),
+)
+def update_kpis(punt_key):
+    col = puntajes.get(punt_key, 'punt_prom_mcn')
+    promedio = Data_used[col].mean()
+    maximo   = Data_used[col].max()
+    minimo   = Data_used[col].min()
+    n_munic  = Data_used['cole_mcpio_ubicacion'].nunique()
+    return [
+        make_kpi("Promedio Dpto.",     f"{promedio:.1f}", "📊", COLORS['primary']),
+        make_kpi("Puntaje Máximo",     f"{maximo:.0f}",   "🏆", COLORS['secondary']),
+        make_kpi("Puntaje Mínimo",     f"{minimo:.0f}",   "⚠️",  '#D63031'),
+        make_kpi("Municipios",         f"{n_munic}",      "📍", COLORS['accent']),
+    ]
+    
+# ── Callback: actualizar mapa ─────────────────────────────────────────────────
+@app.callback(
+    Output('mapa', 'figure'),
+    Input('dd-cat', 'value'),
+    Input('dd-val', 'value'),
+    Input('dd-punt', 'value'),
+)
+def update_mapa(cat_label, cat_val, punt_label):
+    col_cat    = vars_cat.get(cat_label)
+    punt_col   = puntajes.get(punt_label, 'punt_prom_mcn')
+    cat_filtro = cat_val if (cat_val and cat_val != 'Todos') else None
+
+    z, text, municipios_reales = datos_trazar(punt_col, col_cat=col_cat, cat_valor=cat_filtro)
+
+    titulo = punt_label
+    if col_cat:
+        titulo += f" | {cat_label}" + (f": {cat_val}" if cat_val != 'Todos' else '')
+
+    fig = go.Figure()
+    fig.add_trace(go.Choroplethmap(
+        geojson          = filt_geojson,
+        locations        = plot_df['id'],
+        z                = z,
+        customdata       = municipios_reales,
+        colorscale       = "RdYlGn",
+        zmin             = Data_used[punt_col].quantile(0.05),
+        zmax             = Data_used[punt_col].quantile(0.95),
+        marker_opacity   = 0.75,
+        marker_line_width= 0.5,
+        text             = text,
+        hovertemplate    = "%{text}<extra></extra>",
+        colorbar         = dict(title="Puntaje<br>promedio"),
+    ))
+    fig.add_trace(go.Scattermap(
+        lat        = latids_bordes,
+        lon        = longs_bordes,
+        mode       = 'lines',
+        line       = dict(width=2, color='#003876'),
+        hoverinfo  = 'skip',
+        showlegend = False,
+    ))
+    fig.update_layout(
+        map_style  = "carto-positron",
+        map_zoom   = 7,
+        map_center = {"lat": coords_centr[1], "lon": coords_centr[0]},
+        margin     = {"r": 0, "t": 0, "l": 0, "b": 0},
+    )
+    return fig
+
+
+# ── Callback: guardar municipio clickeado ────────────────────────────────────
+@app.callback(
+    Output('municipio-store', 'data'),
+    Input('mapa', 'clickData'),
+    prevent_initial_call=True
+)
+def guardar_municipio(clickData):
+    if clickData is None:
+        return None
+    return clickData['points'][0].get('customdata')
+    
+# ── Callback: toggle tabs + mostrar/ocultar hint y panels ───────────────────
+@app.callback(
+    Output('tab-activo',   'data'),
+    Output('panel-hist',   'style'),
+    Output('panel-violin', 'style'),
+    Output('panel-hint',   'style'),
+    Output('tab-hist-btn', 'style'),
+    Output('tab-violin-btn','style'),
+    Input('tab-hist-btn',   'n_clicks'),
+    Input('tab-violin-btn', 'n_clicks'),
+    Input('municipio-store','data'),
+    State('tab-activo',    'data'),
+)
+def toggle_tab(click_hist, click_violin, municipio, tab_actual):
+    triggered = dash.callback_context.triggered[0]['prop_id']
+
+    btn_activo = {
+        'padding': '7px 18px', 'marginRight': '8px',
+        'border': f'1px solid {COLORS["primary"]}',
+        'borderRadius': '20px', 'cursor': 'pointer',
+        'backgroundColor': COLORS['primary'], 'color': 'white',
+        'fontSize': '12px', 'fontWeight': '600',
+    }
+    btn_inactivo = {
+        'padding': '7px 18px',
+        'border': f'1px solid {COLORS["border"]}',
+        'borderRadius': '20px', 'cursor': 'pointer',
+        'backgroundColor': COLORS['surface'], 'color': COLORS['muted'],
+        'fontSize': '12px', 'fontWeight': '600',
+    }
+    btn_inactivo_violin = {**btn_inactivo, 'marginRight': '0'}
+
+    hint_style = {
+        'textAlign': 'center', 'color': COLORS['muted'],
+        'fontSize': '12px', 'padding': '60px 20px',
+        'border': f'2px dashed {COLORS["border"]}',
+        'borderRadius': '10px', 'marginTop': '8px',
+    }
+
+    # Determinar tab activo
+    if 'tab-hist-btn' in triggered:
+        tab = 'hist'
+    elif 'tab-violin-btn' in triggered:
+        tab = 'violin'
+    else:
+        tab = tab_actual  # municipio cambió, mantener tab
+
+    # Sin municipio: mostrar hint, ocultar gráficas
+    if not municipio:
+        return tab, {'display': 'none'}, {'display': 'none'}, hint_style, btn_activo if tab == 'hist' else btn_inactivo, btn_inactivo_violin if tab == 'hist' else {**btn_activo, 'marginRight': '0'}
+
+    # Con municipio: ocultar hint, mostrar gráfica activa
+    if tab == 'hist':
+        return 'hist', {}, {'display': 'none'}, {'display': 'none'}, btn_activo, btn_inactivo_violin
+    else:
+        return 'violin', {'display': 'none'}, {}, {'display': 'none'}, btn_inactivo, {**btn_activo, 'marginRight': '0'}
+
+
+# ── Callback: ocultar dropdown Variable cuando tab es hist ──────────────────
+@app.callback(
+    Output('div-modal-dd-cat', 'style'),
+    Input('tab-activo', 'data'),
+)
+def toggle_dd_cat(tab):
+    if tab == 'hist':
+        return {'flex': '1', 'marginRight': '12px', 'display': 'none'}
+    return {'flex': '1', 'marginRight': '12px'}
+
+
+# ── Callback: histograma ─────────────────────────────────────────────────────
+@app.callback(
+    Output('hist-plot', 'figure'),
+    Input('municipio-store', 'data'),
+    Input('modal-dd-punt', 'value'),
+    prevent_initial_call=True
+)
+def update_hist(municipio, punt_col):
+    map_puntajes = {
+        'punt_matematicas': 'Matemáticas',
+        'punt_c_naturales': 'Ciencias Naturales',
+        'punt_prom_mcn':    'Promedio Mates y Cienc. Nat.'
+    }
+    if not municipio or punt_col not in map_puntajes:
+        return go.Figure()
+
+    municipio_canonico = mapa_norm_a_real.get(normalizar(municipio), municipio)
+    df_canon = Data_used.copy()
+    df_canon['mcpio_canon'] = df_canon['cole_mcpio_ubicacion'].map(
+        lambda x: mapa_norm_a_real.get(normalizar(x), x)
+    )
+    data_mcpio  = df_canon[df_canon['mcpio_canon'] == municipio_canonico][punt_col].dropna()
+    data_boyaca = df_canon[punt_col].dropna()
+
+    if data_mcpio.empty:
+        return go.Figure()
+
+    n_bins    = 30
+    bin_width = 100 / n_bins
+    x_range   = np.linspace(0, 100, 500)
+    kde       = stats.gaussian_kde(data_boyaca)
+    y_scaled  = kde(x_range) * len(data_mcpio) * bin_width
+
+    fig = go.Figure()
+    fig.add_trace(go.Histogram(
+        x=data_mcpio,
+        name=municipio.title(),
+        marker=dict(color=COLORS['primary'], line=dict(color='white', width=0.5)),
+        opacity=0.76,
+        xbins=dict(start=0, end=100, size=bin_width),
+        hovertemplate='Puntaje: %{x}<br>Estudiantes: %{y}<extra></extra>'
+    ))
+    fig.add_trace(go.Scatter(
+        x=x_range, y=y_scaled,
+        mode='lines',
+        name='Tendencia Boyacá',
+        line=dict(color=COLORS['secondary'], width=3, shape='spline'),
+        fill='tozeroy', fillcolor=f'rgba(239,85,59,0.08)',
+        hoverinfo='skip'
+    ))
+    fig.update_layout(
+        xaxis=dict(title="Puntaje (0 – 100)", range=[0, 100], gridcolor='#f0f0f0'),
+        yaxis=dict(title="N° Estudiantes", gridcolor='#f0f0f0'),
+        template='plotly_white',
+        bargap=0.05,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=50, r=20, t=40, b=50),
+        font=dict(family='"Plus Jakarta Sans", Arial', size=11),
+        hovermode='x unified',
+        title=dict(
+            text=f"{municipio.title()} — {map_puntajes[punt_col]}",
+            x=0.5, font=dict(size=13, color=COLORS['primary'])
+        ),
+    )
+    return fig
+
+
+# ── Callback: violín ─────────────────────────────────────────────────────────
+@app.callback(
+    Output('violin-plot', 'figure'),
+    Input('municipio-store', 'data'),
+    Input('modal-dd-cat',  'value'),
+    Input('modal-dd-punt', 'value'),
+    prevent_initial_call=True
+)
+def update_violin(municipio, col_cat, punt_col):
+    map_cole_vars = {
+        'cole_area_ubicacion': 'Zona de Ubicación',
+        'cole_naturaleza':     'Naturaleza',
+        'cole_caracter':       'Carácter',
+        'cole_jornada':        'Jornada'
+    }
+    map_puntajes = {
+        'punt_matematicas': 'Matemáticas',
+        'punt_c_naturales': 'Ciencias Naturales',
+        'punt_prom_mcn':    'Promedio Mats. Ciencias Nat.'
+    }
+    if not municipio:
+        return go.Figure()
+
+    municipio_canonico = mapa_norm_a_real.get(normalizar(municipio), municipio)
+    df_mun = Data_used.copy()
+    df_mun['mcpio_canon'] = df_mun['cole_mcpio_ubicacion'].map(
+        lambda x: mapa_norm_a_real.get(normalizar(x), x)
+    )
+    df_mun = df_mun[df_mun['mcpio_canon'] == municipio_canonico].dropna(subset=[col_cat, punt_col])
+
+    if df_mun.empty:
+        return go.Figure()
+
+    categorias = sorted(df_mun[col_cat].unique())
+    fig = go.Figure()
+
+    for cat in categorias:
+        df_cat     = df_mun[df_mun[col_cat] == cat]
+        proporcion = len(df_cat) / len(df_mun) * 100
+        mean_val   = df_cat[punt_col].mean()
+        fig.add_trace(go.Violin(
+            y=df_cat[punt_col],
+            name=f"{cat}<br>{proporcion:.1f}%",
+            box_visible=True,
+            meanline_visible=True,
+            points=False,
+            hoveron='violins',
+            hovertemplate=(
+                f"<b>{cat}</b><br>"
+                f"Promedio: {mean_val:.1f}<br>"
+                f"Proporción: {proporcion:.1f}%<br>"
+                f"N°: {len(df_cat)}<extra></extra>"
+            )
+        ))
+
+    fig.update_layout(
+        showlegend=False,
+        yaxis_title=map_puntajes.get(punt_col, punt_col),
+        xaxis_title=map_cole_vars.get(col_cat, col_cat),
+        margin=dict(l=50, r=20, t=40, b=60),
+        plot_bgcolor='white',
+        yaxis=dict(gridcolor='#f0f0f0'),
+        font=dict(family='"Plus Jakarta Sans", Arial', size=11),
+        hovermode='closest',
+        title=dict(
+            text=f"{municipio.title()} — {map_cole_vars.get(col_cat, col_cat)}",
+            x=0.5, font=dict(size=13, color=COLORS['primary'])
+        ),
+    )
+    return fig
+                
+if __name__ == '__main__':
+    app.run(debug=True, port=8051)
