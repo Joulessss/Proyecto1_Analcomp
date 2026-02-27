@@ -770,7 +770,7 @@ def tab1_content():
                 html.Div([
                     html.Span('Mapa Territorial del Desempeño en Inglés',
                               style={'fontWeight': '800', 'color': C['primary'],
-                                     'fontSize': '20px', 'letterSpacing': '0.01em'}),
+                                     'fontSize': '24px', 'letterSpacing': '0.01em'}),
                 ], style={'display': 'flex', 'alignItems': 'center',
                           'marginBottom': '14px'}),
                 html.Div([
@@ -791,7 +791,7 @@ def tab1_content():
                 html.Div([
                     html.Span('Panel de Análisis Estructural',
                               style={'fontWeight': '800', 'color': C['primary'],
-                                     'fontSize': '20px', 'letterSpacing': '0.01em'}),
+                                     'fontSize': '24px', 'letterSpacing': '0.01em'}),
                 ], style={'display': 'flex', 'alignItems': 'center',
                           'marginBottom': '14px'}),
                 dcc.Tabs(
@@ -821,7 +821,7 @@ def tab1_content():
                 html.Div([
                     html.Span('Panel de Análisis Dinámico',
                               style={'fontWeight': '800', 'color': C['primary'],
-                                     'fontSize': '20px', 'letterSpacing': '0.01em'}),
+                                     'fontSize': '24px', 'letterSpacing': '0.01em'}),
                 ], style={'display': 'flex', 'alignItems': 'center',
                           'marginBottom': '14px'}),
                 dcc.Tabs(
@@ -841,7 +841,7 @@ def tab1_content():
                 html.Div([
                     html.Span('Resumen Ejecutivo de Brechas',
                               style={'fontWeight': '800', 'color': C['primary'],
-                                     'fontSize': '20px', 'letterSpacing': '0.01em'}),
+                                     'fontSize': '24px', 'letterSpacing': '0.01em'}),
                 ], style={'display': 'flex', 'alignItems': 'center',
                           'marginBottom': '12px'}),
                 html.Div(
@@ -855,6 +855,43 @@ def tab1_content():
                 ),
                 _kpi_analysis_block(),
             ], style={**CARD, 'marginBottom': '0', 'minHeight': '300px'}),
+
+            html.Div([
+                html.Div([
+                    html.Span('Recomendación de Política Pública',
+                              style={'fontWeight': '800', 'color': C['primary'],
+                                     'fontSize': '24px', 'letterSpacing': '0.01em'}),
+                ], style={'display': 'flex', 'alignItems': 'center',
+                          'marginBottom': '12px'}),
+                html.Div([
+                    html.P(
+                        'Se debe priorizar la intervención en los municipios que registran '
+                        'las mayores brechas de puntaje, como Combita y Nobsa con 27.4 y '
+                        '18.5 puntos de diferencia entre instituciones.',
+                        style={'margin': '0 0 10px 0', 'fontSize': '18px',
+                               'lineHeight': '1.7', 'color': C['text']}
+                    ),
+                    html.P(
+                        'El fortalecimiento debe dirigirse a municipios con alto volumen '
+                        'de estudiantes pero baja penetración bilingüe.',
+                        style={'margin': '0 0 10px 0', 'fontSize': '18px',
+                               'lineHeight': '1.7', 'color': C['text']}
+                    ),
+                    html.P(
+                        'Dado que el análisis demostró que el bilingüismo funciona con igual '
+                        'eficacia en colegios de carácter Técnico como en los Académicos, '
+                        'la Gobernación puede implementar el programa en ambas modalidades '
+                        'sin temor a perder efectividad por el enfoque pedagógico de la institución.',
+                        style={'margin': '0', 'fontSize': '18px',
+                               'lineHeight': '1.7', 'color': C['text']}
+                    ),
+                ], style={
+                    'backgroundColor': C['bg'],
+                    'padding': '14px 16px',
+                    'borderRadius': '10px',
+                    'borderLeft': f'4px solid {C["secondary"]}',
+                }),
+            ], style={**CARD, 'marginBottom': '0', 'marginTop': '20px', 'minHeight': '250px'}),
         ], style={'flex': '1'}),
     ], style={'display': 'flex', 'alignItems': 'stretch'})
 
