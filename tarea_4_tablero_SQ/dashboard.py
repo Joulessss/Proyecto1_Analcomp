@@ -11,6 +11,9 @@ import dash
 from dash import dcc, html, Input, Output, State
 import scipy.stats as stats
 import warnings
+from app_instance import app          
+import tab1_bilingue                  
+from tab1_bilingue import tab1_content
 import urllib3
 from urllib3.exceptions import NotOpenSSLWarning
 
@@ -18,7 +21,7 @@ warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
 warnings.filterwarnings("ignore", category=urllib3.exceptions.NotOpenSSLWarning)
 
 #cargar datos ────────────────────────────────────────────────────────────────────────
-Data = pd.read_csv('./DataAWS.csv')
+Data = pd.read_csv('./tarea2_limpieza/cleaned_data.csv')
 
 cols_used = ['cole_area_ubicacion', 'cole_caracter','cole_naturaleza','cole_jornada', #barplots apilados y donas y geograficos
              'cole_mcpio_ubicacion', 'cole_nombre_establecimiento',                          
@@ -27,10 +30,10 @@ cols_used = ['cole_area_ubicacion', 'cole_caracter','cole_naturaleza','cole_jorn
 Data_used = Data[cols_used].copy()
 Data_used['punt_prom_mcn'] = (Data_used['punt_matematicas'] + Data_used['punt_c_naturales'])/2
 
-with open('./data_df_graphs/gadm41_COL_2.json', 'r', encoding='utf-8') as f:
+with open('./data_df_graphs_SQ/gadm41_COL_2.json', 'r', encoding='utf-8') as f:
     geojson_data = json.load(f)
     
-with open('./data_df_graphs/gadm41_COL_1.json', 'r', encoding='utf-8') as f:
+with open('./data_df_graphs_SQ/gadm41_COL_1.json', 'r', encoding='utf-8') as f:
     geojson_dpto = json.load(f)
     
 
@@ -260,31 +263,31 @@ def seccion_pregunta(numero, titulo, descripcion):
 
 # tab pregunta 1 ────────────────────────────────────────────────────────────────────────
 
-def tab1_content():
-    return html.Div([
-        seccion_pregunta(
-            1,
-            "Impacto del Bilingüismo en el Desempeño",
-            "¿Existe evidencia de que los colegios bilingües presentan un desempeño significativamente "
-            "superior en inglés y puntaje global frente a los no bilingües, justificando programas "
-            "en instituciones públicas?"
-        ),
+# def tab1_content():
+#     return html.Div([
+#         seccion_pregunta(
+#             1,
+#             "Impacto del Bilingüismo en el Desempeño",
+#             "¿Existe evidencia de que los colegios bilingües presentan un desempeño significativamente "
+#             "superior en inglés y puntaje global frente a los no bilingües, justificando programas "
+#             "en instituciones públicas?"
+#         ),
         
-        html.Div([
-            make_kpi("Colegios Bilingües", "—", "🌐", COLORS['primary']),
-            make_kpi("Diferencia en Inglés", "—", "📈", COLORS['secondary']),
-            make_kpi("Significancia Estadística", "—", "🔬", COLORS['accent']),
-        ], style={'display': 'flex', 'gap': '16px', 'marginBottom': '20px'}),
+#         html.Div([
+#             make_kpi("Colegios Bilingües", "—", "🌐", COLORS['primary']),
+#             make_kpi("Diferencia en Inglés", "—", "📈", COLORS['secondary']),
+#             make_kpi("Significancia Estadística", "—", "🔬", COLORS['accent']),
+#         ], style={'display': 'flex', 'gap': '16px', 'marginBottom': '20px'}),
 
-        html.Div([
-            html.Div("📊 Gráficas de comparación bilingüe vs. no bilingüe aparecerán aquí.", style={
-                'textAlign': 'center',
-                'color': COLORS['muted'],
-                'fontSize': '15px',
-                'padding': '60px 0',
-            })
-        ], style=CARD_STYLE),
-    ])
+#         html.Div([
+#             html.Div("📊 Gráficas de comparación bilingüe vs. no bilingüe aparecerán aquí.", style={
+#                 'textAlign': 'center',
+#                 'color': COLORS['muted'],
+#                 'fontSize': '15px',
+#                 'padding': '60px 0',
+#             })
+#         ], style=CARD_STYLE),
+#     ])
 
 
 # tab pregunta 2 ────────────────────────────────────────────────────────────────────────
@@ -659,12 +662,6 @@ def tab3_content():
     ])
 
 # ── dashboard layout ───────────────────────────────────────────────────────────────
-app = dash.Dash(
-    __name__,
-    suppress_callback_exceptions=True,
-    external_stylesheets=['https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap']
-)
-
 app.layout = html.Div(
     style={
         'backgroundColor': COLORS['background'],
