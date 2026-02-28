@@ -1,12 +1,9 @@
 *.tar.gz
 *.csv
+*.xip
+*.zip
 .DS_Store
-<<<<<<< HEAD
-ß
-=======
 __pycache__/
 *.pyc
-*.zip
 .ipynb_checkpoints/
 __MACOSX
->>>>>>> f69a81cefc3540bcea32c35c7cd7f45e9152c154
