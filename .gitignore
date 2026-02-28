@@ -1,0 +1,6 @@
+*.tar.gz
+*.csv
+.DS_store
+__pycache__/
+*.xip
+__MACOSX
