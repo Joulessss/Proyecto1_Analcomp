@@ -578,18 +578,55 @@ def _fig_ic():
 # barra IC [pr bucket ────────────────────────────────────────────────────────────────────────
 def _fig_bucket_bars():
     if _agg_bucket is None: return go.Figure()
-    fig = px.bar(_agg_bucket, x='bucket', y='mean_ing', error_y='err',
+    dfb = _agg_bucket.copy()
+    fig = px.bar(dfb, x='bucket', y='mean_ing', error_y='err',
                  text='n_munis',
                  color_discrete_sequence=[C['primary']],
                  labels={'bucket': '# colegios bilingües (bucket)',
                          'mean_ing': 'Promedio inglés'})
     fig.update_traces(
         texttemplate='%{text} munis', textposition='outside',
-        textfont_size=12, marker_line_width=0,
-        error_y_color=C['muted'], error_y_thickness=1.5,
+        textfont_size=14,
+        textfont_color=C['text'],
+        marker_line_width=0.5,
+        marker_line_color='white',
+        error_y_color=C['text'],
+        error_y_thickness=3,
+        error_y_width=9,
         hovertemplate='<b>Bucket %{x}</b><br>Prom.: %{y:.1f}<br>Mun.: %{text}<extra></extra>')
-    return _sty(fig, yaxis_title='Promedio inglés municipal', xaxis_title='Bucket de colegios bilingües',
-                margin=dict(l=55, r=25, t=30, b=50))
+    if not dfb.empty:
+        y_top = float((dfb['mean_ing'] + dfb['err']).max())
+        y_pad = max(2.0, y_top * 0.08)
+        fig.update_yaxes(range=[0, y_top + y_pad * 2.2])
+
+        left_x = dfb.iloc[0]['bucket']
+        right_x = dfb.iloc[-1]['bucket']
+        left_y = float(dfb.iloc[0]['mean_ing'] + dfb.iloc[0]['err']) + y_pad
+        right_y = float(dfb.iloc[-1]['mean_ing'] + dfb.iloc[-1]['err']) + y_pad
+
+        fig.add_annotation(
+            x=left_x, y=left_y, text='<b>121</b>',
+            showarrow=False,
+            font=dict(size=15, color=C['primary']),
+            bgcolor='rgba(255,255,255,0.96)',
+            bordercolor=C['border'],
+            borderwidth=1,
+        )
+        fig.add_annotation(
+            x=right_x, y=right_y, text='<b>5</b>',
+            showarrow=False,
+            font=dict(size=15, color=C['primary']),
+            bgcolor='rgba(255,255,255,0.96)',
+            bordercolor=C['border'],
+            borderwidth=1,
+        )
+
+    return _sty(
+        fig,
+        yaxis_title='Promedio inglés municipal',
+        xaxis_title='Bucket de colegios bilingües',
+        margin=dict(l=55, r=25, t=35, b=55),
+    )
 
 
 def _fig_bucket_strip():
@@ -1050,9 +1087,24 @@ def t1_fixed_tab(tab):
     if tab == 't1-bucket':
         return html.Div([
             _nota('Relación entre número de colegios bilingües y desempeño municipal en inglés. '
-                  'La barra resume media e IC 95%; el strip muestra heterogeneidad entre municipios.'),
+                  'La barra resume media e IC 95% por bucket municipal.'),
             dcc.Graph(figure=_FIG_BUCKET_BAR, style={'height': '400px'},
-                      config={'displayModeBar': False}),            
+                      config={'displayModeBar': False}),
+            html.Div(
+                'Nota: las etiquetas 121 (barra izquierda) y 5 (barra derecha) se incluyen como '
+                'marcadores de referencia para explicar los extremos usados en la lectura de '
+                'promedios bilingües más altos del departamento.',
+                style={
+                    'fontSize': '12px',
+                    'color': C['text'],
+                    'lineHeight': '1.6',
+                    'backgroundColor': C['bg'],
+                    'borderRadius': '8px',
+                    'padding': '10px 14px',
+                    'marginTop': '10px',
+                    'borderLeft': f'4px solid {C["secondary"]}',
+                },
+            ),
         ])
 
     return html.Div()
@@ -1086,7 +1138,7 @@ def t1_fixed_facet(score):
 
 # Carga de datos y creacion pivots y figuras ────────────────────────────────────────────────────────────────────────
 try:
-    _datos = pd.read_csv('tarea2_limpieza/cleaned_data.csv')
+    _datos = pd.read_csv('data_df_graphs_SQ/cleaned_data.csv')
 except FileNotFoundError:
     print('NO FILE')
     _datos = pd.DataFrame()

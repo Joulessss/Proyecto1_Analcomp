@@ -14,6 +14,7 @@ import warnings
 from app_instance import app          
 import tab1_bilingue                  
 from tab1_bilingue import tab1_content
+import tab2_csociales
 import urllib3
 from urllib3.exceptions import NotOpenSSLWarning
 
@@ -21,7 +22,7 @@ warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
 warnings.filterwarnings("ignore", category=urllib3.exceptions.NotOpenSSLWarning)
 
 #cargar datos ────────────────────────────────────────────────────────────────────────
-Data = pd.read_csv('./tarea2_limpieza/cleaned_data.csv')
+Data = pd.read_csv('data_df_graphs_SQ/cleaned_data.csv')
 
 cols_used = ['cole_area_ubicacion', 'cole_caracter','cole_naturaleza','cole_jornada', #barplots apilados y donas y geograficos
              'cole_mcpio_ubicacion', 'cole_nombre_establecimiento',                          
@@ -30,10 +31,10 @@ cols_used = ['cole_area_ubicacion', 'cole_caracter','cole_naturaleza','cole_jorn
 Data_used = Data[cols_used].copy()
 Data_used['punt_prom_mcn'] = (Data_used['punt_matematicas'] + Data_used['punt_c_naturales'])/2
 
-with open('./data_df_graphs_SQ/gadm41_COL_2.json', 'r', encoding='utf-8') as f:
+with open('data_df_graphs_SQ/gadm41_COL_2.json', 'r', encoding='utf-8') as f:
     geojson_data = json.load(f)
     
-with open('./data_df_graphs_SQ/gadm41_COL_1.json', 'r', encoding='utf-8') as f:
+with open('data_df_graphs_SQ/gadm41_COL_1.json', 'r', encoding='utf-8') as f:
     geojson_dpto = json.load(f)
     
 
@@ -262,33 +263,6 @@ def seccion_pregunta(numero, titulo, descripcion):
 # ────────────────────────────────────────────────────────────────────────
 
 
-# tab pregunta 2 ────────────────────────────────────────────────────────────────────────
-
-def tab2_content():
-    return html.Div([
-        seccion_pregunta(
-            2,
-            "Focalización de Esfuerzos Sociales",
-            "¿En qué segmentos (urbano/rural, público/privado, población privada de la libertad) "
-            "se concentra el menor desempeño en Ciencias Sociales para priorizar la intervención territorial?"
-        ),
-        html.Div([
-            make_kpi("Brecha Urbano-Rural", "—", "🏘️", COLORS['primary']),
-            make_kpi("% Segmento Crítico", "—", "⚠️", '#D63031'),
-            make_kpi("Municipios Focalizados", "—", "📍", COLORS['secondary']),
-        ], style={'display': 'flex', 'gap': '16px', 'marginBottom': '20px'}),
-
-        html.Div([
-            html.Div("📊 Gráficas de segmentación y focalización territorial aparecerán aquí.", style={
-                'textAlign': 'center',
-                'color': COLORS['muted'],
-                'fontSize': '15px',
-                'padding': '60px 0',
-            })
-        ], style=CARD_STYLE),
-    ])
-    
-    
 # tab pregunta 3 ─────────────────────────────────────────────────────────────
 def tab3_content():
     return html.Div([
@@ -644,15 +618,15 @@ app.layout = html.Div(
         html.Div([
             html.Div([
                
-                html.Div("🏛️", style={'fontSize': '40px', 'marginRight': '18px'}),
+                html.Div("💼", style={'fontSize': '40px', 'marginRight': '18px'}),
                 html.Div([
-                    html.H1("Gobernación de Boyacá", style={
-                        'margin': '0', 'fontSize': '22px',
+                    html.H1("Consultoría Chocotejazos", style={
+                        'margin': '0', 'fontSize': '30px',
                         'fontWeight': '800', 'color': 'white',
                         'letterSpacing': '-0.02em',
                     }),
-                    html.P("Análisis Educativo · Resultados Saber 11", style={
-                        'margin': '2px 0 0', 'fontSize': '13px',
+                    html.P("Análisis Educativo · Resultados Saber 11 - Boyacá", style={
+                        'margin': '2px 0 0', 'fontSize': '24px',
                         'color': 'rgba(255,255,255,0.7)', 'fontWeight': '500',
                     }),
                 ]),
@@ -700,7 +674,7 @@ def render_tab(tab):
     if tab == 'tab-1':
         return tab1_content()
     elif tab == 'tab-2':
-        return tab2_content()
+        return tab2_csociales.tab2_content()
     else:
         return tab3_content()
 
