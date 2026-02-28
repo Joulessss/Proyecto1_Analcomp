@@ -261,34 +261,6 @@ def seccion_pregunta(numero, titulo, descripcion):
 # contenido tabs ─────────────────────────────────────────────────────────
 # ────────────────────────────────────────────────────────────────────────
 
-# tab pregunta 1 ────────────────────────────────────────────────────────────────────────
-
-# def tab1_content():
-#     return html.Div([
-#         seccion_pregunta(
-#             1,
-#             "Impacto del Bilingüismo en el Desempeño",
-#             "¿Existe evidencia de que los colegios bilingües presentan un desempeño significativamente "
-#             "superior en inglés y puntaje global frente a los no bilingües, justificando programas "
-#             "en instituciones públicas?"
-#         ),
-        
-#         html.Div([
-#             make_kpi("Colegios Bilingües", "—", "🌐", COLORS['primary']),
-#             make_kpi("Diferencia en Inglés", "—", "📈", COLORS['secondary']),
-#             make_kpi("Significancia Estadística", "—", "🔬", COLORS['accent']),
-#         ], style={'display': 'flex', 'gap': '16px', 'marginBottom': '20px'}),
-
-#         html.Div([
-#             html.Div("📊 Gráficas de comparación bilingüe vs. no bilingüe aparecerán aquí.", style={
-#                 'textAlign': 'center',
-#                 'color': COLORS['muted'],
-#                 'fontSize': '15px',
-#                 'padding': '60px 0',
-#             })
-#         ], style=CARD_STYLE),
-#     ])
-
 
 # tab pregunta 2 ────────────────────────────────────────────────────────────────────────
 
