@@ -67,8 +67,8 @@ _LAYOUT = dict(
 
 
 # datos ────────────────────────────────────────────────────────────────────────
-DATA_PATH = 'data_df_graphs_SQ/cleaned_data.csv'
-GEOJSON = 'data_df_graphs_SQ/boyaca_geojson_123_municipios.geojson'
+DATA_PATH = 'PROYECTO_CONSULTORIA_BOYACA/data/cleaned_data.csv'
+GEOJSON = 'PROYECTO_CONSULTORIA_BOYACA/data/boyaca_geojson_123_municipios.geojson'
 
 
 def norm_text(s):

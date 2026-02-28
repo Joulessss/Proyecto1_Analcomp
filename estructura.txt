@@ -1,0 +1,71 @@
+### Estructura Detallada del Proyecto ###
+==============================
+CARPETA: __MACOSX/
+
+==============================
+CARPETA: data_df_graphs_SQ/
+boyaca_geojson_123_json.json
+boyaca_geojson_123_municipios.geojson
+cleaned_data.csv
+cleaned_data.zip
+gadm41_COL_1.json
+gadm41_COL_2.json
+
+==============================
+CARPETA: PROYECTO_CONSULTORIA_BOYACA/
+data/
+scripts/
+
+==============================
+CARPETA: tarea_1_analisis_negocio_SQ/
+pregunta_santiago.md
+
+==============================
+CARPETA: tarea_3_analisis_datos_SQ/
+eda_pregunta.ipynb
+
+==============================
+CARPETA: tarea_4_tablero_SQ/
+__pycache__/
+app_instance.py
+dashboard.py
+tab1_bilingue.py
+tab2_csociales.py
+
+==============================
+CARPETA: tarea1_analisis_de_negocio_DM/
+pregunta.md
+
+==============================
+CARPETA: tarea1_analisis_negocio_JQ/
+pregunta.md
+
+==============================
+CARPETA: tarea2_limpieza_DM/
+cleaned_data.csv
+cleaned_data.zip
+limpieza_eda.ipynb
+
+==============================
+CARPETA: tarea3_analisis_datos_JQ/
+boyaca_geojson_123_json.json
+boyaca_geojson_123_municipios.geojson
+DataAnalysis_Juliana.ipynb
+map_brecha_bilingue_muni.html
+map_colegios_bilingues_muni.html
+map_estudiantes_gt85_muni.html
+map_estudiantes_lt30_muni.html
+map_pct_bilingues_colegios.html
+map_promedio_ingles_muni.html
+test_dash.py
+
+==============================
+CARPETA: tarea3_analisis_de_datos_Daniel/
+analisis_daniel.ipynb
+boyaca_geojson_123_json.json
+boyaca_geojson_123_municipios.geojson
+puntaje_sociales.html
+
+==============================
+CARPETA: tarea5_despliegue_JQ/
+

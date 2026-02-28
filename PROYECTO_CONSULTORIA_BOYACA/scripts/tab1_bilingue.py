@@ -83,7 +83,7 @@ MAP_OPTIONS = {
     'cnt_lt30': 'Cantidad de estudiantes con inglés < 30',
     'cnt_gt85': 'Cantidad de estudiantes con inglés > 85',
 }
-GEOJSON = 'data_df_graphs_SQ/boyaca_geojson_123_municipios.geojson'
+GEOJSON = 'PROYECTO_CONSULTORIA_BOYACA/data/boyaca_geojson_123_municipios.geojson'
 
 _BINS   = [0, 30, 50, 70, 85, 101]
 _RANGOS = ['0–30', '31–50', '51–70', '71–85', '+85']
@@ -1138,7 +1138,7 @@ def t1_fixed_facet(score):
 
 # Carga de datos y creacion pivots y figuras ────────────────────────────────────────────────────────────────────────
 try:
-    _datos = pd.read_csv('data_df_graphs_SQ/cleaned_data.csv')
+    _datos = pd.read_csv('PROYECTO_CONSULTORIA_BOYACA/data/cleaned_data.csv')
 except FileNotFoundError:
     print('NO FILE')
     _datos = pd.DataFrame()

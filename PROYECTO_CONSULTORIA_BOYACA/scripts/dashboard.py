@@ -18,7 +18,7 @@ warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
 warnings.filterwarnings("ignore", category=urllib3.exceptions.NotOpenSSLWarning)
 
 #cargar datos ────────────────────────────────────────────────────────────────────────
-Data = pd.read_csv('data_df_graphs_SQ/cleaned_data.csv')
+Data = pd.read_csv('PROYECTO_CONSULTORIA_BOYACA/data/cleaned_data.csv')
 
 cols_used = ['cole_area_ubicacion', 'cole_caracter','cole_naturaleza','cole_jornada', #barplots apilados y donas y geograficos
              'cole_mcpio_ubicacion', 'cole_nombre_establecimiento',                          
@@ -27,10 +27,10 @@ cols_used = ['cole_area_ubicacion', 'cole_caracter','cole_naturaleza','cole_jorn
 Data_used = Data[cols_used].copy()
 Data_used['punt_prom_mcn'] = (Data_used['punt_matematicas'] + Data_used['punt_c_naturales'])/2
 
-with open('data_df_graphs_SQ/gadm41_COL_2.json', 'r', encoding='utf-8') as f:
+with open('PROYECTO_CONSULTORIA_BOYACA/data/gadm41_COL_2.json', 'r', encoding='utf-8') as f:
     geojson_data = json.load(f)
     
-with open('data_df_graphs_SQ/gadm41_COL_1.json', 'r', encoding='utf-8') as f:
+with open('PROYECTO_CONSULTORIA_BOYACA/data/gadm41_COL_1.json', 'r', encoding='utf-8') as f:
     geojson_dpto = json.load(f)
     
 
