@@ -1,2 +1,8 @@
 *.tar.gz
 *.csv
+.DS_Store
+__pycache__/
+*.pyc
+*.zip
+.ipynb_checkpoints/
+__MACOSX
