@@ -123,6 +123,119 @@ def _kpi(label, value, color):
         'flex': '1', 'marginBottom': '0', 'borderTop': f'4px solid {color}',
     })
 
+# renderizado tablas genericas ────────────────────────────────────────────────────────────────────────
+def _render_simple_table(df, max_rows=8):
+    if df.empty:
+        return html.Div('Sin datos suficientes.', style={'fontSize': '12px', 'color': C['muted']})
+
+    dfv = df.head(max_rows).copy()
+    cols = list(dfv.columns)
+    header = html.Thead(html.Tr([
+        html.Th(c, style={
+            'padding': '8px 10px',
+            'fontSize': '11px',
+            'fontWeight': '700',
+            'textTransform': 'uppercase',
+            'letterSpacing': '0.05em',
+            'color': C['muted'],
+            'textAlign': 'left',
+            'borderBottom': f'2px solid {C["border"]}',
+            'backgroundColor': '#F8FAFC',
+        }) for c in cols
+    ]))
+    rows = []
+    for _, row in dfv.iterrows():
+        tds = []
+        for c in cols:
+            v = row[c]
+            if isinstance(v, float):
+                txt = f'{v:.2e}' if 'p-valor' in c else f'{v:.2f}'
+            else:
+                txt = str(v)
+            tds.append(html.Td(txt, style={
+                'padding': '8px 10px',
+                'fontSize': '12px',
+                'borderBottom': f'1px solid {C["border"]}',
+                'color': C['text'],
+                'whiteSpace': 'nowrap',
+            }))
+        rows.append(html.Tr(tds))
+
+    return html.Div([
+        html.Table([header, html.Tbody(rows)], style={
+            'width': '100%',
+            'borderCollapse': 'separate',
+            'borderSpacing': '0',
+        })
+    ], style={
+        'maxHeight': '270px',
+        'overflowY': 'auto',
+        'overflowX': 'auto',
+        'border': f'1px solid {C["border"]}',
+        'borderRadius': '10px',
+    })
+
+# tabla de prioridades ────────────────────────────────────────────────────────────────────────
+def _build_priority_df(df, agg_muni):
+    if df.empty or agg_muni.empty:
+        return pd.DataFrame()
+    mean_dep = float(df['punt_sociales_ciudadanas'].mean())
+    p = agg_muni.copy().reset_index().rename(columns={'index': 'muni_key'})
+    p['brecha_vs_depto'] = (mean_dep - p['promedio_sc']).round(2)
+    p['impacto'] = (p['brecha_vs_depto'].clip(lower=0) * p['n_total']).round(1)
+    p = p[p['brecha_vs_depto'] > 0].sort_values('impacto', ascending=False)
+    p['municipio'] = p['muni_key'].str.title()
+    return p[['municipio', 'promedio_sc', 'brecha_vs_depto', 'n_total', 'segmento_frecuente', 'impacto']]
+
+# tabla de significancia ────────────────────────────────────────────────────────────────────────
+def _build_significance_df(df):
+    rows = []
+    comps = [
+        ('OFICIAL', 'NO OFICIAL', 'Naturaleza: Oficial vs No Oficial', 'cole_naturaleza'),
+        ('URBANO', 'RURAL', 'Área: Urbano vs Rural', 'cole_area_ubicacion'),
+        ('S', 'N', 'PPL: Privados de libertad vs General', 'estu_privado_libertad'),
+    ]
+    for g1, g2, label, col in comps:
+        s1 = df.loc[df[col] == g1, 'punt_sociales_ciudadanas'].dropna()
+        s2 = df.loc[df[col] == g2, 'punt_sociales_ciudadanas'].dropna()
+        if len(s1) < 5 or len(s2) < 5:
+            continue
+        _, p = stats.ttest_ind(s1, s2, equal_var=False)
+        d = float(s1.mean() - s2.mean())
+        se = float(np.sqrt(s1.var(ddof=1)/len(s1) + s2.var(ddof=1)/len(s2)))
+        rows.append({
+            'Comparación': label,
+            'Brecha (A-B)': round(d, 2),
+            'IC95 inf': round(d - 1.96*se, 2),
+            'IC95 sup': round(d + 1.96*se, 2),
+            'p-valor': float(p),
+            'Significativo': 'Sí' if p < 0.05 else 'No',
+        })
+    return pd.DataFrame(rows)
+
+# conclusion ────────────────────────────────────────────────────────────────────────
+def _build_conclusion_text(df):
+    if df.empty:
+        return 'No fue posible construir conclusión por falta de datos.'
+    means_nat = df.groupby('cole_naturaleza')['punt_sociales_ciudadanas'].mean()
+    means_area = df.groupby('cole_area_ubicacion')['punt_sociales_ciudadanas'].mean()
+    means_ppl = df.groupby('estu_privado_libertad')['punt_sociales_ciudadanas'].mean()
+
+    nat_worst = means_nat.idxmin() if not means_nat.empty else 'N/D'
+    area_worst = means_area.idxmin() if not means_area.empty else 'N/D'
+    ppl_worst = means_ppl.idxmin() if not means_ppl.empty else 'N/D'
+
+    nat_gap = (means_nat.max() - means_nat.min()) if len(means_nat) >= 2 else np.nan
+    area_gap = (means_area.max() - means_area.min()) if len(means_area) >= 2 else np.nan
+    ppl_gap = (means_ppl.max() - means_ppl.min()) if len(means_ppl) >= 2 else np.nan
+
+    return (
+        f'Conclusión directa: el menor desempeño se concentra en {nat_worst} por naturaleza, '
+        f'en {area_worst} por ubicación y en el grupo {ppl_worst} para condición de libertad. '
+        f'Brechas estimadas: naturaleza {nat_gap:.2f} pts, área {area_gap:.2f} pts y PPL {ppl_gap:.2f} pts.'
+    )
+
+
 # cajas ────────────────────────────────────────────────────────────────────────
 def _build_box_figure(df):
     fig = make_subplots(
@@ -415,6 +528,10 @@ def tab2_content():
         _kpi('Municipios críticos (Q1)', f'{n_crit}', C['accent']),
     ], style={'display': 'flex', 'gap': '16px', 'marginBottom': '20px'})
 
+    priority_df = _build_priority_df(_df, _agg_muni)
+    signif_df = _build_significance_df(_df)
+    conclusion_txt = _build_conclusion_text(_df)
+
     return html.Div([
         html.Div([
             html.Span('Pregunta 2', style={
@@ -461,6 +578,8 @@ def tab2_content():
                     children=[
                         dcc.Tab(label='Violín Segmentos', value='t2-violin', style=_TS, selected_style=_TA),
                         dcc.Tab(label='Box Segmentos', value='t2-box', style=_TS, selected_style=_TA),
+                        dcc.Tab(label='Heatmap Segmentos', value='t2-heat', style=_TS, selected_style=_TA),
+                        dcc.Tab(label='KDE Poblacional', value='t2-kde', style=_TS, selected_style=_TA),
                     ]
                 ),
                 html.Div(id='t2-tab-content'),
@@ -469,20 +588,37 @@ def tab2_content():
 
         html.Div([
             html.Div([
-                html.Div('Heatmap de Segmentación', style={
+                html.Div('Conclusión Directa', style={
                     'fontWeight': '800', 'color': C['primary'], 'fontSize': '22px', 'marginBottom': '12px'
                 }),
-                _nota('Promedios por combinación de segmento y carácter académico para detectar focos críticos.'),
-                dcc.Graph(figure=_FIG_HEAT, style={'height': '570px'}, config={'displayModeBar': False}),
-            ], style={**CARD, 'flex': '1', 'marginRight': '20px', 'marginBottom': '0'}),
+                html.Div(conclusion_txt, style={
+                    'fontSize': '14px', 'lineHeight': '1.7', 'color': C['text'],
+                    'backgroundColor': C['bg'], 'padding': '12px 14px',
+                    'borderRadius': '8px', 'borderLeft': f'4px solid {C["secondary"]}',
+                }),
+            ], style={**CARD, 'flex': '1', 'marginRight': '20px', 'marginBottom': '0', 'minHeight': '320px'}),
 
             html.Div([
-                html.Div('KDE Poblacional', style={
+                html.Div('Tabla de Priorización', style={
                     'fontWeight': '800', 'color': C['primary'], 'fontSize': '22px', 'marginBottom': '12px'
                 }),
-                _nota('Densidades comparadas de puntaje para población general y población privada de libertad.'),
-                dcc.Graph(figure=_FIG_KDE, style={'height': '510px'}, config={'displayModeBar': False}),
-            ], style={**CARD, 'flex': '1', 'marginBottom': '0'}),
+                _nota('Municipios con mayor brecha frente al promedio departamental y mayor impacto potencial (brecha × volumen).'),
+                _render_simple_table(priority_df.rename(columns={
+                    'promedio_sc': 'Promedio',
+                    'brecha_vs_depto': 'Brecha vs Dpto',
+                    'n_total': 'N estudiantes',
+                    'segmento_frecuente': 'Segmento pred.',
+                    'impacto': 'Índice impacto',
+                }), max_rows=8),
+            ], style={**CARD, 'flex': '1', 'marginRight': '20px', 'marginBottom': '0', 'minHeight': '320px'}),
+
+            html.Div([
+                html.Div('Significancia Estadística', style={
+                    'fontWeight': '800', 'color': C['primary'], 'fontSize': '22px', 'marginBottom': '12px'
+                }),
+                _nota('Pruebas t de Welch e intervalos de confianza al 95% para validar brechas entre segmentos.'),
+                _render_simple_table(signif_df, max_rows=6),
+            ], style={**CARD, 'flex': '1', 'marginBottom': '0', 'minHeight': '320px'}),
         ], style={'display': 'flex', 'alignItems': 'stretch'}),
     ])
 
@@ -496,6 +632,18 @@ def t2_render(tab):
         return html.Div([
             _nota('Comparación de dispersión por naturaleza institucional y entorno urbano-rural.'),
             dcc.Graph(figure=_FIG_BOX, style={'height': '520px'}, config={'displayModeBar': False}),
+        ])
+
+    if tab == 't2-heat':
+        return html.Div([
+            _nota('Promedios por combinación de segmento y carácter académico para detectar focos críticos.'),
+            dcc.Graph(figure=_FIG_HEAT, style={'height': '570px'}, config={'displayModeBar': False}),
+        ])
+
+    if tab == 't2-kde':
+        return html.Div([
+            _nota('Densidades comparadas de puntaje para población general y población privada de libertad.'),
+            dcc.Graph(figure=_FIG_KDE, style={'height': '510px'}, config={'displayModeBar': False}),
         ])
 
     return html.Div([
